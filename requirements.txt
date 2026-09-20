@@ -1,0 +1,34 @@
+# Dependências do YouTube Downloader com Dublagem
+# Instale com: pip3 install -r requirements.txt --break-system-packages
+
+# Interface gráfica moderna
+customtkinter>=5.2.0
+
+# Download de vídeos do YouTube (usar versão nightly para melhor compatibilidade)
+# pip3 install --pre "yt-dlp[default]" --break-system-packages
+yt-dlp>=2024.1.1
+
+# Processamento de imagens (thumbnails)
+Pillow>=10.0.0
+
+# Requisições HTTP (download de thumbnails)
+requests>=2.31.0
+
+# Manipulação de janelas X11 (corrige ícone no painel)
+python-xlib>=0.33
+
+# ─── Dependências do sistema (instalar via terminal) ───────────────────────────
+
+# Tkinter e suporte a imagens:
+# sudo apt install python3-tk python3-pil.imagetk
+
+# FFmpeg (merge de vídeo/áudio e conversão H.264/H.265):
+# sudo apt install ffmpeg
+
+# xprop e xdotool (detecção de resolução e ícone no painel):
+# sudo apt install x11-utils xdotool
+
+# Deno (runtime JavaScript — necessário para o yt-dlp resolver o challenge do YouTube):
+# curl -fsSL https://deno.land/install.sh | sh
+# Após instalar, adicione ao PATH no ~/.bashrc:
+# echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc

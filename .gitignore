@@ -1,0 +1,42 @@
+# Cookies do YouTube — nunca versionar (contém dados de sessão)
+cookies.txt
+
+# Configurações locais — específicas de cada máquina
+config.json
+
+# Histórico de downloads — dado pessoal
+downloads_history.json
+
+# Ícone convertido (o .svg já é suficiente)
+# icon.png  ← manter no repo para o atalho .desktop funcionar
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec
+.eggs/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+.env
+
+# PyInstaller
+*.manifest
+
+# Logs
+*.log
+
+# Sistema
+.DS_Store
+Thumbs.db
+*~
+.directory
