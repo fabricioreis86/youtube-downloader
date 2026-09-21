@@ -1,13 +1,13 @@
 #!/bin/bash
 # Launcher do YouTube Downloader
-# Garante que yt-dlp e deno estão no PATH e corrige o WM_CLASS
+# Garante que yt-dlp e deno estão no PATH e corrige o WM_CLASS no painel
 
 export PATH="$HOME/.local/bin:$HOME/.deno/bin:$PATH"
 
 PROGRAM_DIR="/home/fabricio/Downloads/Softwares/Youtube Downloader"
 
 # Iniciar o programa em background
-"$PROGRAM_DIR/dist/youtube-downloader" &
+python3 "$PROGRAM_DIR/youtube_downloader.py" &
 APP_PID=$!
 
 # Aguardar a janela aparecer e corrigir WM_CLASS (até 10 segundos)
