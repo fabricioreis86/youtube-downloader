@@ -16,7 +16,7 @@ from io import BytesIO
 from pathlib import Path
 
 import customtkinter as ctk
-import requests
+# requests é importado sob demanda em _load_thumbnail para reduzir tempo de abertura
 from PIL import Image
 
 # ─── Configuração de aparência ────────────────────────────────────────────────
@@ -135,6 +135,7 @@ def _make_context_menu(widget, readonly=False):
 class YouTubeDownloader(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.withdraw()  # esconder até carregar completamente
 
         self.title("YouTube Downloader com Dublagem")
         # Definir WMClass para o painel/taskbar reconhecer o programa
@@ -836,7 +837,8 @@ class YouTubeDownloader(ctk.CTk):
 
         for url in candidates[:3]:
             try:
-                r = requests.get(url, timeout=10, headers=headers)
+                import requests as _requests
+                r = _requests.get(url, timeout=10, headers=headers)
                 r.raise_for_status()
                 img = Image.open(BytesIO(r.content)).convert("RGB")
                 img = img.resize((160, 90), Image.LANCZOS)
@@ -1404,4 +1406,6 @@ class YouTubeDownloader(ctk.CTk):
 if __name__ == "__main__":
     app = YouTubeDownloader()
     app.protocol("WM_DELETE_WINDOW", lambda: (app._save_config(), app.destroy()))
+    # Mostrar a janela apenas quando tudo estiver carregado
+    app.after(0, app.deiconify)
     app.mainloop()
