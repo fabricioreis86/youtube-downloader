@@ -177,8 +177,8 @@ class YouTubeDownloader(ctk.CTk):
         self._build_ui()
         self._bind_context_menus()
         self._load_config()
-        self._check_ffmpeg_on_start()
-        self._auto_update_ytdlp()
+        # Adiar tarefas de rede/subprocess para após a janela aparecer
+        self.after(300, self._startup_checks)
 
     def _bind_context_menus(self):
         """Vincula menu de contexto (botão direito) a todos os campos de texto."""
@@ -1367,33 +1367,36 @@ class YouTubeDownloader(ctk.CTk):
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
-    def _check_ffmpeg_on_start(self):
+    def _startup_checks(self):
+        """Roda verificações de inicialização em thread para não travar a UI."""
+        threading.Thread(target=self._startup_checks_thread, daemon=True).start()
+
+    def _startup_checks_thread(self):
+        # 1. Verificar ffmpeg
         if not check_ffmpeg():
-            self._log(
-                "⚠  ffmpeg não encontrado!\n"
-                "   Linux:   sudo apt install ffmpeg\n"
-                "   macOS:   brew install ffmpeg\n"
-                "   Windows: choco install ffmpeg  (ou baixe em ffmpeg.org)\n"
+            self.after(0, self._log,
+                "⚠  ffmpeg não encontrado! Execute: sudo apt install ffmpeg"
             )
         else:
-            self._log("✅  ffmpeg detectado.")
+            self.after(0, self._log, "✅  ffmpeg detectado.")
+
+        # 2. Verificar versão do yt-dlp (sem atualizar — apenas informa)
+        try:
+            result = subprocess.run(
+                ["yt-dlp", "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            version = result.stdout.strip()
+            if version:
+                self.after(0, self._log, f"yt-dlp: {version}")
+        except Exception:
+            pass
+
+    def _check_ffmpeg_on_start(self):
+        pass  # substituído por _startup_checks
 
     def _auto_update_ytdlp(self):
-        def _update():
-            try:
-                result = subprocess.run(
-                    ["yt-dlp", "--update-to", "stable"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-                lines = result.stdout.strip().splitlines()
-                if lines:
-                    self.after(0, self._log, f"yt-dlp: {lines[-1]}")
-            except Exception:
-                pass
-
-        threading.Thread(target=_update, daemon=True).start()
+        pass  # substituído por _startup_checks
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
