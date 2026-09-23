@@ -156,6 +156,7 @@ class YouTubeDownloader(ctk.CTk):
         self._video_formats = []
         self._thumbnail_image = None
         self._downloading = False
+        self._cancel_event = threading.Event()  # sinaliza cancelamento
 
         # Variáveis de controle
         self.url_var = ctk.StringVar()
@@ -216,11 +217,11 @@ class YouTubeDownloader(ctk.CTk):
             pass
 
     def _fit_to_screen(self):
-        """Posiciona a janela no monitor principal com largura ideal e altura maximizada."""
+        """Centraliza a janela no monitor principal."""
         self.update_idletasks()
 
-        # Posição e largura do monitor principal via xrandr
-        primary_x, primary_y, primary_w, primary_h = 0, 0, 0, 0
+        # Usar xrandr para pegar apenas o monitor principal
+        primary_x, primary_y, primary_w, primary_h = 0, 0, 1366, 768
         try:
             out = subprocess.check_output(["xrandr", "--query"], text=True)
             import re as _re
@@ -233,33 +234,17 @@ class YouTubeDownloader(ctk.CTk):
         except Exception:
             pass
 
-        if primary_w == 0:
-            primary_w = self.winfo_screenwidth()
-            primary_h = self.winfo_screenheight()
-
-        # Largura ideal centralizada no monitor principal
         win_w = min(820, primary_w)
+        win_h = min(700, primary_h - 60)  # 60px para barra de titulo + painel
+
         pos_x = primary_x + (primary_w - win_w) // 2
+        pos_y = primary_y + (primary_h - win_h) // 2 - 30  # deslocar levemente pro topo
 
-        # Mover para o monitor principal primeiro
-        self.geometry(f"{win_w}x600+{pos_x}+{primary_y}")
-        self.update_idletasks()
+        # Garantir que nao sai da tela
+        pos_y = max(primary_y, pos_y)
 
-        # Maximizar apenas verticalmente — deixa o WM calcular a altura certa
-        self.wm_attributes("-zoomed", True)
-        self.update_idletasks()
-
-        # Capturar a altura que o WM atribuiu após maximizar
-        zoomed_h = self.winfo_height()
-        zoomed_y = self.winfo_y()
-
-        # Restaurar tamanho normal mas com a altura correta que o WM usou
-        self.wm_attributes("-zoomed", False)
-        self.update_idletasks()
-
-        self.geometry(f"{win_w}x{zoomed_h}+{pos_x}+{zoomed_y}")
-        self.minsize(min(680, win_w), min(480, zoomed_h))
-        # Garantir que o scroll começa no topo
+        self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+        self.minsize(680, 480)
         self.after(50, self._scroll_to_top)
 
     def _scroll_to_top(self):
@@ -570,15 +555,32 @@ class YouTubeDownloader(ctk.CTk):
         self.log_text.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="ew")
         self.log_text.configure(state="disabled")
 
-        # ── Botão download ────────────────────────────────────────────────────
+        # ── Botões Baixar + Cancelar ─────────────────────────────────────────
+        btn_row = ctk.CTkFrame(parent, fg_color="transparent")
+        btn_row.grid(row=7, column=0, padx=4, pady=(0, 4), sticky="ew")
+        btn_row.grid_columnconfigure(0, weight=1)
+
         self.btn_download = ctk.CTkButton(
-            parent,
+            btn_row,
             text="⬇  Baixar",
             height=42,
             font=("Segoe UI", 15, "bold"),
             command=self._start_download,
         )
-        self.btn_download.grid(row=7, column=0, padx=4, pady=(0, 4), sticky="ew")
+        self.btn_download.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        self.btn_cancel = ctk.CTkButton(
+            btn_row,
+            text="✕  Cancelar",
+            height=42,
+            font=("Segoe UI", 15, "bold"),
+            fg_color="#8B0000",
+            hover_color="#6B0000",
+            state="disabled",
+            command=self._cancel_operation,
+            width=140,
+        )
+        self.btn_cancel.grid(row=0, column=1, sticky="ew")
 
     def _build_history_tab(self, parent):
         parent.grid_columnconfigure(0, weight=1)
@@ -877,7 +879,8 @@ class YouTubeDownloader(ctk.CTk):
             return
 
         self._downloading = True
-        self.btn_download.configure(state="disabled", text="Baixando...")
+        self._cancel_event.clear()
+        self.btn_cancel.configure(state="normal")
         self.progress_bar.set(0)
         self.progress_label.configure(text="0%")
         threading.Thread(target=self._download_thread, daemon=True).start()
@@ -900,6 +903,12 @@ class YouTubeDownloader(ctk.CTk):
             downloaded_file = None
 
             for line in process.stdout:
+                # Verificar cancelamento
+                if self._cancel_event.is_set():
+                    process.terminate()
+                    self.after(0, self._log, "⏹  Download cancelado.")
+                    self.after(0, self._update_progress, 0)
+                    return
                 line = line.strip()
                 if not line:
                     continue
@@ -928,7 +937,10 @@ class YouTubeDownloader(ctk.CTk):
                     downloaded_file = m3.group(1)
 
             process.wait()
-            if process.returncode == 0 or success:
+            if self._cancel_event.is_set():
+                self.after(0, self._log, "⏹  Download cancelado.")
+                self.after(0, self._update_progress, 0)
+            elif process.returncode == 0 or success:
                 self.after(0, self._on_success, downloaded_file)
             else:
                 self.after(0, self._log, "❌  O download terminou com erros.")
@@ -1066,9 +1078,12 @@ class YouTubeDownloader(ctk.CTk):
         title = self._video_info.get("title", "Vídeo")
         out_dir = self.output_var.get()
 
+        # Remover legendas externas se incorporar estiver ativo
+        if self.sub_enabled_var.get() and self.sub_embed_var.get() and downloaded_file:
+            self._cleanup_subtitle_files(downloaded_file)
+
         codec = self.convert_var.get()
         if codec != "nao" and downloaded_file and os.path.isfile(downloaded_file):
-            # Disparar conversão em thread separada
             threading.Thread(
                 target=self._convert_thread,
                 args=(downloaded_file, codec, title),
@@ -1085,6 +1100,22 @@ class YouTubeDownloader(ctk.CTk):
                 "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
             })
             self._refresh_history()
+
+    def _cleanup_subtitle_files(self, video_file):
+        """Remove arquivos de legenda externos após incorporar no vídeo."""
+        import glob
+        base = os.path.splitext(video_file)[0]
+        exts = ["srt", "vtt", "ass", "ssa", "lrc"]
+        removed = []
+        for ext in exts:
+            for f in glob.glob(f"{base}*.{ext}"):
+                try:
+                    os.remove(f)
+                    removed.append(os.path.basename(f))
+                except Exception:
+                    pass
+        for name in removed:
+            self._log(f"🗑️  Legenda externa removida: {name}")
 
     def _convert_thread(self, src_path, codec, title):
         """Converte o arquivo baixado para h264 ou h265 usando ffmpeg."""
@@ -1127,6 +1158,18 @@ class YouTubeDownloader(ctk.CTk):
             time_done = 0.0
 
             for line in process.stdout:
+                # Verificar cancelamento
+                if self._cancel_event.is_set():
+                    process.terminate()
+                    self.after(0, self._log, "⏹  Conversão cancelada. Arquivo original mantido.")
+                    self.after(0, self._update_progress, 0)
+                    # Remover arquivo parcialmente convertido
+                    try:
+                        if os.path.exists(dst_path):
+                            os.remove(dst_path)
+                    except Exception:
+                        pass
+                    return
                 line = line.strip()
                 if not line:
                     continue
@@ -1148,7 +1191,15 @@ class YouTubeDownloader(ctk.CTk):
 
             process.wait()
 
-            if process.returncode == 0:
+            if self._cancel_event.is_set():
+                self.after(0, self._log, "⏹  Conversão cancelada.")
+                self.after(0, self._update_progress, 0)
+                try:
+                    if os.path.exists(dst_path):
+                        os.remove(dst_path)
+                except Exception:
+                    pass
+            elif process.returncode == 0:
                 self.after(0, self._update_progress, 1.0)
                 self.after(0, self._log, f"✅  Conversão concluída: {os.path.basename(dst_path)}")
                 if self.convert_delete_var.get():
@@ -1326,9 +1377,17 @@ class YouTubeDownloader(ctk.CTk):
         else:
             self.chk_delete_original.configure(state="normal")
 
+    def _cancel_operation(self):
+        """Sinaliza cancelamento do download ou conversão em andamento."""
+        self._cancel_event.set()
+        self._log("⏹  Cancelando... aguarde.")
+        self.btn_cancel.configure(state="disabled", text="Cancelando...")
+
     def _reset_buttons(self):
         """Reabilita os botões Analisar e Baixar — deve rodar na thread principal."""
+        self._cancel_event.clear()
         self.btn_download.configure(state="normal", text="⬇  Baixar")
+        self.btn_cancel.configure(state="disabled", text="✕  Cancelar")
         self.btn_analyze.configure(state="normal", text="Analisar")
 
     def _choose_folder(self):
