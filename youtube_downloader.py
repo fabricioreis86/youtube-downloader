@@ -160,6 +160,8 @@ class YouTubeDownloader(ctk.CTk):
 
         # Variáveis de controle
         self.url_var = ctk.StringVar()
+        self.is_playlist = False       # True quando URL é de playlist
+        self.playlist_items = []       # lista de entradas da playlist
         self.quality_var = ctk.StringVar(value="1080p")
         self.audio_var = ctk.StringVar(value="Melhor disponível")
         self.output_var = ctk.StringVar(value=str(Path.home() / "Downloads"))
@@ -360,7 +362,12 @@ class YouTubeDownloader(ctk.CTk):
         self.channel_label = ctk.CTkLabel(
             info_frame, text="", font=("Segoe UI", 11), text_color="gray"
         )
-        self.channel_label.grid(row=2, column=1, padx=(8, 12), pady=(0, 10), sticky="w")
+        self.channel_label.grid(row=2, column=1, padx=(8, 12), pady=(0, 4), sticky="w")
+
+        self.playlist_label = ctk.CTkLabel(
+            info_frame, text="", font=("Segoe UI", 11), text_color="#4eb8ff"
+        )
+        self.playlist_label.grid(row=3, column=1, padx=(8, 12), pady=(0, 10), sticky="w")
 
         # ── Seção Opções ─────────────────────────────────────────────────────
         opts_frame = ctk.CTkFrame(parent, corner_radius=8)
@@ -614,9 +621,92 @@ class YouTubeDownloader(ctk.CTk):
             self._log("❌  URL inválida. Use um link do YouTube.")
             return
 
+        # Detectar se é playlist
+        self.is_playlist = "list=" in url and "watch?v=" not in url or "/playlist?" in url
+        self.playlist_items = []
+
         self.btn_analyze.configure(state="disabled", text="Analisando...")
-        self._log("🔍  Analisando vídeo...")
-        threading.Thread(target=self._analyze_thread, daemon=True).start()
+        if self.is_playlist:
+            self._log("📂  Analisando playlist...")
+            threading.Thread(target=self._analyze_playlist_thread, daemon=True).start()
+        else:
+            self._log("🔍  Analisando vídeo...")
+            threading.Thread(target=self._analyze_thread, daemon=True).start()
+
+    def _analyze_playlist_thread(self):
+        """Analisa uma playlist do YouTube e lista os vídeos disponíveis."""
+        url = self.url_var.get().strip()
+        mode = self.cookie_mode_var.get()
+        if mode == "arquivo":
+            cpath = self.cookie_file_var.get().strip()
+            cookie_args = ["--cookies", cpath] if cpath and os.path.isfile(cpath) else []
+        else:
+            cookie_args = ["--cookies-from-browser", self.browser_var.get()]
+
+        try:
+            # --flat-playlist retorna metadados sem baixar cada vídeo
+            result = subprocess.run(
+                ["yt-dlp", "--flat-playlist", "--dump-json", *cookie_args, url],
+                capture_output=True, text=True, timeout=300,
+            )
+            stdout = result.stdout.strip()
+            if not stdout:
+                err = result.stderr.strip().splitlines()
+                msg = next((l for l in reversed(err) if "ERROR" in l), None) or "Erro ao analisar playlist."
+                raise RuntimeError(msg)
+
+            # Cada linha é um JSON de um vídeo da playlist
+            items = []
+            for line in stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    items.append(json.loads(line))
+                except Exception:
+                    pass
+
+            if not items:
+                raise RuntimeError("Nenhum vídeo encontrado na playlist.")
+
+            self.playlist_items = items
+            # Usar o primeiro vídeo como referência para qualidade/áudio
+            first_url = items[0].get("url") or items[0].get("webpage_url") or f"https://www.youtube.com/watch?v={items[0].get('id','')}"
+
+            # Analisar primeiro vídeo para pegar formatos disponíveis
+            result2 = subprocess.run(
+                ["yt-dlp", "--dump-json", "--no-playlist", *cookie_args, first_url],
+                capture_output=True, text=True, timeout=300,
+            )
+            stdout2 = result2.stdout.strip()
+            if stdout2:
+                info = json.loads(stdout2)
+                self._video_info = info
+                self._parse_formats(info)
+                self.after(0, self._update_ui_after_playlist, items, info)
+            else:
+                self.after(0, self._update_ui_after_playlist, items, None)
+
+        except Exception as e:
+            self.after(0, self._log, f"❌  Erro: {e}")
+        finally:
+            self.after(0, self._reset_buttons)
+
+    def _update_ui_after_playlist(self, items, info):
+        """Atualiza a UI após analisar uma playlist."""
+        total = len(items)
+        playlist_title = items[0].get("playlist_title") or items[0].get("playlist") or "Playlist"
+
+        self.title_label.configure(text=f"📂  {playlist_title}")
+        self.duration_label.configure(text="")
+        self.channel_label.configure(text=f"🎞️  {total} vídeo(s) na playlist")
+        self.playlist_label.configure(text="ℹ️  As opções de qualidade abaixo se aplicam a todos os vídeos")
+        self.thumbnail_label.configure(image=None, text="📂")
+
+        if info:
+            self._update_quality_menus(info)
+
+        self._log(f"\u2705  Playlist analisada: {total} v\u00eddeo(s) \u2014 {playlist_title}")
 
     def _analyze_thread(self):
         url = self.url_var.get().strip()
@@ -761,6 +851,32 @@ class YouTubeDownloader(ctk.CTk):
 
         self._subtitle_langs = sub_langs
 
+    def _update_quality_menus(self, info):
+        """Atualiza menus de qualidade, áudio e legendas a partir das informações do vídeo."""
+        qualities = self._video_formats + ["Apenas Áudio"]
+        self.quality_menu.configure(values=qualities)
+        if self._video_formats:
+            self.quality_var.set(self._video_formats[0])
+
+        if self._audio_formats:
+            audio_labels = ["Melhor disponível"] + list(self._audio_formats.keys())
+            self.audio_menu.configure(values=audio_labels, state="normal")
+            self.audio_var.set(audio_labels[0])
+        else:
+            self.audio_menu.configure(values=["Melhor disponível"], state="disabled")
+
+        if self._subtitle_langs:
+            lang_labels = list(self._subtitle_langs.keys())
+            self._sub_lang_labels = lang_labels
+            default = next(
+                (l for l in lang_labels if "Português" in l and "Manual" in l),
+                next((l for l in lang_labels if "Português" in l), lang_labels[0])
+            )
+            self.sub_lang_var.set(default)
+        else:
+            self._sub_lang_labels = ["Nenhuma"]
+            self.sub_lang_var.set("Nenhuma")
+
     def _update_ui_after_analyze(self, info):
         title = info.get("title", "Título desconhecido")
         duration = format_duration(info.get("duration"))
@@ -866,8 +982,8 @@ class YouTubeDownloader(ctk.CTk):
     def _start_download(self):
         if self._downloading:
             return
-        if not self._video_info:
-            self._log("⚠  Analise um vídeo primeiro.")
+        if not self._video_info and not self.playlist_items:
+            self._log("⚠  Analise um vídeo ou playlist primeiro.")
             return
 
         out_dir = self.output_var.get()
@@ -881,9 +997,131 @@ class YouTubeDownloader(ctk.CTk):
         self._downloading = True
         self._cancel_event.clear()
         self.btn_cancel.configure(state="normal")
+        self.btn_download.configure(state="disabled", text="Baixando...")
         self.progress_bar.set(0)
         self.progress_label.configure(text="0%")
-        threading.Thread(target=self._download_thread, daemon=True).start()
+
+        if self.is_playlist and self.playlist_items:
+            threading.Thread(target=self._download_playlist_thread, daemon=True).start()
+        else:
+            threading.Thread(target=self._download_thread, daemon=True).start()
+
+    def _download_playlist_thread(self):
+        """Baixa todos os vídeos da playlist com progresso global."""
+        items = self.playlist_items
+        total = len(items)
+        self.after(0, self._log, f"📥  Iniciando download de {total} vídeo(s)...")
+
+        mode = self.cookie_mode_var.get()
+        if mode == "arquivo":
+            cpath = self.cookie_file_var.get().strip()
+            cookie_args = ["--cookies", cpath] if cpath and os.path.isfile(cpath) else []
+        else:
+            cookie_args = ["--cookies-from-browser", self.browser_var.get()]
+
+        try:
+            for idx, item in enumerate(items, 1):
+                if self._cancel_event.is_set():
+                    self.after(0, self._log, "⏹  Download da playlist cancelado.")
+                    break
+
+                video_id = item.get("id", "")
+                video_title = item.get("title", f"Vídeo {idx}")
+                video_url = item.get("url") or item.get("webpage_url") or f"https://www.youtube.com/watch?v={video_id}"
+
+                self.after(0, self._log, f"\n[{idx}/{total}] {video_title}")
+                self.after(0, self._update_progress, (idx - 1) / total)
+                self.after(0, self.progress_label.configure,
+                           {"text": f"{idx}/{total} vídeos"})
+
+                # Montar comando para este vídeo
+                cmd = self._build_command_for_url(video_url, *cookie_args)
+                self.after(0, self._log, f"▶  {' '.join(cmd)}")
+
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+
+                for line in process.stdout:
+                    if self._cancel_event.is_set():
+                        process.terminate()
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    self.after(0, self._log, line)
+
+                process.wait()
+
+                if self._cancel_event.is_set():
+                    self.after(0, self._log, "⏹  Cancelado.")
+                    break
+
+                if process.returncode != 0:
+                    self.after(0, self._log, f"⚠️  Erro ao baixar: {video_title}")
+                else:
+                    self.after(0, self._log, f"✅  [{idx}/{total}] Concluído: {video_title}")
+
+            if not self._cancel_event.is_set():
+                self.after(0, self._update_progress, 1.0)
+                self.after(0, self.progress_label.configure, {"text": f"{total}/{total} vídeos"})
+                self.after(0, self._log, f"\n✅  Playlist concluída! {total} vídeo(s) baixado(s) em: {self.output_var.get()}")
+                save_history({
+                    "title": f"Playlist: {items[0].get('playlist', 'Playlist')} ({total} vídeos)",
+                    "url": self.url_var.get().strip(),
+                    "folder": self.output_var.get(),
+                    "quality": self.quality_var.get(),
+                    "audio": self.audio_var.get(),
+                    "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                })
+                self.after(0, self._refresh_history)
+
+        except Exception as e:
+            self.after(0, self._log, f"❌  Erro na playlist: {e}")
+        finally:
+            self._downloading = False
+            self.after(0, self._reset_buttons)
+
+    def _build_command_for_url(self, url, *extra_args):
+        """Monta o comando yt-dlp para uma URL específica (usado em playlists)."""
+        # Coletar cookie_args dos extra_args passados
+        cookie_args = list(extra_args)
+
+        out_dir = self.output_var.get()
+        quality = self.quality_var.get()
+        audio_choice = self.audio_var.get()
+        fmt_out = self.format_var.get().lower()
+
+        output_template = os.path.join(out_dir, "%(title)s.%(ext)s")
+
+        if quality == "Apenas Áudio" or fmt_out in ("mp3", "m4a"):
+            ext = "mp3" if fmt_out == "mp3" else "m4a"
+            sub_args = self._build_subtitle_args()
+            return ["yt-dlp", *cookie_args, "-f", "bestaudio",
+                    "--extract-audio", "--audio-format", ext,
+                    "-o", output_template, "--no-playlist", *sub_args, url]
+
+        match = re.search(r"(\d+)p", quality)
+        height = match.group(1) if match else "1080"
+
+        if audio_choice != "Melhor disponível" and audio_choice in self._audio_formats:
+            lang_code = self._audio_formats[audio_choice]
+            format_sel = (f"bestvideo[height<={height}]+bestaudio[language={lang_code}]/"
+                          f"bestvideo[height<={height}]+bestaudio")
+        else:
+            format_sel = f"bestvideo[height<={height}]+bestaudio"
+
+        merge_fmt = fmt_out if fmt_out in ("mp4", "mkv", "webm") else "mp4"
+        sub_args = self._build_subtitle_args()
+
+        return ["yt-dlp", *cookie_args, "-f", format_sel,
+                "--merge-output-format", merge_fmt,
+                "-o", output_template, "--no-playlist", *sub_args, url]
 
     def _download_thread(self):
         success = False
