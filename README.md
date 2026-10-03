@@ -1,6 +1,6 @@
 # YouTube Downloader com Dublagem 🎬
 
-Interface gráfica para baixar vídeos do YouTube com suporte a múltiplas faixas de áudio (dublagem), legendas, conversão de codec e histórico de downloads.
+Interface gráfica para baixar vídeos do YouTube com suporte a múltiplas faixas de áudio (dublagem), legendas, playlists, conversão de codec e histórico de downloads.
 
 ---
 
@@ -12,13 +12,14 @@ Interface gráfica para baixar vídeos do YouTube com suporte a múltiplas faixa
 4. [Como usar o programa](#4-como-usar-o-programa)
 5. [Funcionalidades](#5-funcionalidades)
 6. [Criar atalho na área de trabalho](#6-criar-atalho-na-área-de-trabalho)
-7. [Solução de problemas](#7-solução-de-problemas)
+7. [Instalar no Windows](#7-instalar-no-windows)
+8. [Solução de problemas](#8-solução-de-problemas)
 
 ---
 
 ## 1. Requisitos do sistema
 
-- **Sistema operacional:** Linux (testado no Xubuntu 24.04 LTS)
+- **Sistema operacional:** Linux (testado no Xubuntu 24.04 LTS) ou Windows 10/11
 - **Python:** 3.9 ou superior
 - **Navegador:** Brave, Chrome, Firefox ou outro baseado em Chromium
 
@@ -37,8 +38,7 @@ sudo apt install python3-tk python3-pil.imagetk
 # FFmpeg — necessário para mesclar vídeo+áudio e converter codecs
 sudo apt install ffmpeg
 
-# xprop — detecta a área útil da tela (desconta painel/taskbar)
-# xdotool — corrige o ícone do programa no painel
+# xprop e xdotool — detecta área útil da tela e corrige ícone no painel
 sudo apt install x11-utils xdotool
 ```
 
@@ -50,7 +50,7 @@ O yt-dlp precisa do Deno para resolver o JavaScript challenge do YouTube. Sem el
 # Instalar o Deno
 curl -fsSL https://deno.land/install.sh | sh
 
-# Adicionar ao PATH (necessário para o programa encontrar o Deno)
+# Adicionar ao PATH
 echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 
@@ -64,6 +64,11 @@ deno --version
 pip3 install -r requirements.txt --break-system-packages
 ```
 
+> **Recomendado:** usar a versão nightly do yt-dlp para melhor compatibilidade:
+> ```bash
+> pip3 install --pre "yt-dlp[default]" --break-system-packages
+> ```
+
 ---
 
 ## 3. Configuração dos cookies do YouTube
@@ -72,9 +77,7 @@ O YouTube exige autenticação para liberar os formatos de vídeo completos. Sem
 
 ### 3.1 Instalar a extensão de exportação
 
-No Brave (ou Chrome), acesse a Chrome Web Store e instale a extensão:
-
-**"Get cookies.txt LOCALLY"**
+No Brave (ou Chrome), instale a extensão **"Get cookies.txt LOCALLY"**:
 `https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc`
 
 ### 3.2 Exportar os cookies corretamente
@@ -82,54 +85,56 @@ No Brave (ou Chrome), acesse a Chrome Web Store e instale a extensão:
 > ⚠️ Siga os passos **exatamente** nesta ordem para evitar que os cookies sejam rotacionados pelo YouTube.
 
 1. Abra uma **janela anônima** no Brave (`Ctrl+Shift+N`)
-2. Acesse `https://www.youtube.com` e faça login com sua conta Google
+2. Acesse `https://www.youtube.com` e faça login
 3. **Na mesma aba**, acesse `https://www.youtube.com/robots.txt`
-   - Esse passo "congela" a sessão e evita a rotação dos cookies
-4. Com a aba em `robots.txt`, clique na extensão **"Get cookies.txt LOCALLY"**
-5. Selecione o domínio `.youtube.com` e clique em exportar
-6. Salve o arquivo como `cookies.txt` na pasta do programa:
-   ```
-   /home/fabricio/Downloads/Softwares/Youtube Downloader/cookies.txt
-   ```
-7. **Feche a janela anônima imediatamente** — não abra mais nenhuma aba do YouTube nessa sessão
+4. Clique na extensão e exporte para o domínio `.youtube.com`
+5. Salve como `cookies.txt` na pasta do programa
+6. **Feche a janela anônima imediatamente**
 
 ### 3.3 Configurar no programa
 
-Ao abrir o programa pela primeira vez:
-1. Na seção **Cookies**, selecione a opção **"Arquivo cookies.txt"**
-2. Clique no botão **"…"** e selecione o arquivo `cookies.txt` exportado
-3. O caminho é salvo automaticamente em `config.json` — não precisa selecionar novamente nas próximas aberturas
+1. Na seção **Cookies**, selecione **"Arquivo cookies.txt"**
+2. Clique em **"…"** e selecione o arquivo exportado
+3. O caminho é salvo em `config.json` — não precisa selecionar novamente
 
-> **Validade dos cookies:** Os cookies do YouTube expiram periodicamente. Se começar a receber erros 400 ou 429 novamente, repita o processo de exportação e selecione o novo arquivo no programa.
+> **Validade:** Os cookies expiram periodicamente. Se receber erros 400 ou 429, repita a exportação.
 
 ---
 
 ## 4. Como usar o programa
 
-### Executar o programa
-
-Use o script `launch.sh` que garante que o PATH está correto e o ícone aparece no painel:
+### Executar
 
 ```bash
 bash "/home/fabricio/Downloads/Softwares/Youtube Downloader/launch.sh"
 ```
 
-Ou pelo atalho na área de trabalho (após criá-lo na seção 6).
+Ou pelo atalho na área de trabalho (seção 6).
 
-### Fluxo básico de download
+### Download de vídeo
 
-1. **Cole a URL** do vídeo no campo "URL do Vídeo"
-   - Suporta vídeos normais, Shorts e playlists
-2. **Clique em "Analisar"** — o programa carrega título, thumbnail, qualidades disponíveis, faixas de áudio e legendas
-3. **Configure as opções:**
-   - **Qualidade:** resolução do vídeo (144p até 2160p/4K)
-   - **Formato:** MP4, MKV, WEBM, MP3 ou M4A
-   - **Faixa de Áudio:** idioma da dublagem (ex: Português BR)
-   - **Cookies:** selecione o arquivo `cookies.txt` (salvo automaticamente após a primeira vez)
-   - **Salvar em:** pasta de destino (salva automaticamente)
-   - **Legendas:** ative e escolha idioma, formato e se deseja incorporar no vídeo
-   - **Converter codec:** converta para H.264 ou H.265 após o download
-4. **Clique em "⬇ Baixar"**
+1. Cole a URL no campo "URL do Vídeo"
+2. Clique em **"Analisar"**
+3. Configure as opções e clique em **"⬇ Baixar"**
+4. Use **"✕ Cancelar"** para interromper a qualquer momento
+
+### Download de playlist
+
+1. Cole a URL da playlist (ex: `https://www.youtube.com/playlist?list=...`)
+2. Clique em **"Analisar"** — o programa detecta automaticamente que é uma playlist e lista os vídeos
+3. Configure qualidade, áudio e legendas (aplicados a todos os vídeos)
+4. Clique em **"⬇ Baixar"** — os vídeos são baixados em sequência com progresso `[1/N]`, `[2/N]` etc.
+
+### Opções disponíveis
+
+| Opção | Descrição |
+|---|---|
+| Qualidade | 144p até 2160p (4K) |
+| Formato | MP4, MKV, WEBM, MP3, M4A |
+| Faixa de Áudio | Idioma da dublagem |
+| Legendas | Idioma, formato (SRT/VTT/ASS/LRC), incorporar no vídeo |
+| Converter codec | H.264 (AVC) ou H.265 (HEVC) após o download |
+| Cancelar | Interrompe download ou conversão a qualquer momento |
 
 ---
 
@@ -137,23 +142,24 @@ Ou pelo atalho na área de trabalho (após criá-lo na seção 6).
 
 | Funcionalidade | Descrição |
 |---|---|
+| Vídeos e Shorts | Download de vídeos normais e Shorts |
+| Playlists | Download completo de playlists com progresso por vídeo |
 | Múltiplas qualidades | 144p até 2160p (4K), detecção automática |
 | Dublagem | Seleção de faixa de áudio por idioma |
 | Apenas áudio | Download em MP3 ou M4A |
-| Legendas | Manual ou automática, vários idiomas e formatos (SRT, VTT, ASS, LRC) |
-| Incorporar legenda | Embute a legenda no arquivo de vídeo |
+| Legendas | Manual ou automática, múltiplos idiomas e formatos |
+| Incorporar legenda | Embute no vídeo e apaga o arquivo externo automaticamente |
 | Conversão de codec | H.264 (AVC) ou H.265 (HEVC) com ffmpeg |
-| Thumbnail | Exibida após análise do vídeo |
-| Histórico | Registra os últimos 100 downloads em `downloads_history.json` |
-| Configurações salvas | Pasta de destino, cookies e preferências salvas em `config.json` |
-| Menu de contexto | Copiar/Colar/Recortar com botão direito do mouse nos campos de texto |
-| Multi-monitor | Abre automaticamente no monitor principal |
+| Cancelar | Botão para cancelar download ou conversão a qualquer momento |
+| Thumbnail | Exibida após análise |
+| Histórico | Últimos 100 downloads em `downloads_history.json` |
+| Configurações salvas | Pasta, cookies e preferências em `config.json` |
+| Menu de contexto | Copiar/Colar com botão direito do mouse |
+| Multi-monitor | Abre no monitor principal automaticamente |
 
 ---
 
 ## 6. Criar atalho na área de trabalho
-
-O programa é iniciado pelo `launch.sh`, que garante o PATH correto (Deno, yt-dlp) e o ícone correto no painel do Xfce.
 
 ### 6.1 Instalar o ícone no sistema
 
@@ -182,8 +188,6 @@ StartupNotify=true
 DESKTOP
 
 chmod +x "/home/fabricio/Área de trabalho/youtube-downloader.desktop"
-
-# Instalar também no menu de aplicações
 cp "/home/fabricio/Área de trabalho/youtube-downloader.desktop" \
    ~/.local/share/applications/youtube-downloader.desktop
 update-desktop-database ~/.local/share/applications/
@@ -197,8 +201,12 @@ Youtube Downloader/
 ├── launch.sh                 # Script de inicialização (use este para abrir)
 ├── requirements.txt          # Dependências Python
 ├── README.md                 # Este arquivo
-├── icon.png                  # Ícone do programa
+├── icon.png                  # Ícone do programa (PNG)
 ├── icon.svg                  # Ícone vetorial
+├── icon.ico                  # Ícone para Windows
+├── build_windows.bat         # Script de build para Windows
+├── installer.iss             # Script do instalador Windows (Inno Setup)
+├── INSTALAR_WINDOWS.md       # Instruções para gerar o instalador Windows
 ├── cookies.txt               # Cookies do YouTube (gerado por você)
 ├── config.json               # Configurações salvas (gerado automaticamente)
 └── downloads_history.json    # Histórico de downloads (gerado automaticamente)
@@ -206,33 +214,38 @@ Youtube Downloader/
 
 ---
 
-## 7. Solução de problemas
+## 7. Instalar no Windows
+
+Consulte o arquivo `INSTALAR_WINDOWS.md` para o passo a passo completo de como gerar o instalador `YouTube_Downloader_Setup.exe` para Windows 10/11.
+
+Resumo:
+1. Instale Python 3.11+, FFmpeg, Deno e Inno Setup 6
+2. Execute `build_windows.bat` para gerar o `.exe` via PyInstaller
+3. Abra `installer.iss` no Inno Setup e pressione F9 para gerar o instalador
+
+---
+
+## 8. Solução de problemas
 
 ### Erro 400, 429 ou "The page needs to be reloaded"
 - Exporte um novo `cookies.txt` seguindo o passo a passo da seção 3
-- Certifique-se de que o Deno está instalado e no PATH: `deno --version`
-- Sempre abra o programa pelo `launch.sh` ou pelo atalho da área de trabalho
+- Verifique se o Deno está no PATH: `deno --version`
+- Abra sempre pelo `launch.sh` ou pelo atalho
 
 ### "No supported JavaScript runtime"
-O yt-dlp não encontrou o Deno. Verifique:
 ```bash
 deno --version
 echo $PATH | grep deno
-```
-Se o Deno não aparecer no PATH, adicione novamente:
-```bash
-echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+# Se não aparecer:
+echo 'export PATH="$HOME/.deno/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
 ### Thumbnail não aparece
-- Verifique sua conexão com a internet
-- O problema pode ser temporário — tente analisar o vídeo novamente
+- Verifique a conexão com a internet e tente analisar novamente
 
 ### ffmpeg não encontrado
 ```bash
-sudo apt install ffmpeg
-ffmpeg -version
+sudo apt install ffmpeg && ffmpeg -version
 ```
 
 ### ModuleNotFoundError: No module named 'tkinter'
@@ -245,8 +258,7 @@ sudo apt install python3-tk
 pip3 install -r requirements.txt --break-system-packages
 ```
 
-### Janela cortada pelo painel da barra de tarefas
-O programa detecta automaticamente a área útil da tela. Se ainda ocorrer, verifique se o `xprop` está instalado:
+### Janela cortada pelo painel
 ```bash
 sudo apt install x11-utils
 xprop -root _NET_WORKAREA
